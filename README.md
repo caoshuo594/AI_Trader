@@ -259,8 +259,8 @@ EA 初始化时会自动把当前图表切换到 `InpAnalysisTimeframe`。例如
 4. 打开 MT5 顶部 `Algo Trading`。
 5. 在 `工具 -> 选项 -> EA交易` 中允许算法交易。
 6. 在 `WebRequest` 允许列表中加入：
-   - `InpLicenseLoginEndpoint` 对应域名
-   - `InpOpenRouterEndpoint` 对应地址
+   - `InpLicenseLoginEndpoint` ：https://caocaoshuoshuo.com
+   - `InpOpenRouterEndpoint` ：https://openrouter.ai/api/v1/chat/completions
 7. 首次使用时填写 `InpLicenseLoginEndpoint`、`InpLicenseEmail`、`InpLicensePassword`。
 8. 填写可用的 `InpOpenRouterApiKey`，或启用本地记忆密钥文件。
 9. 完成首次授权后，后续可以不再重复填写邮箱密码，只要本地授权仍有效即可。
