@@ -1,20 +1,94 @@
 # AI_Trader_Pro 使用说明
 
-## 1. 当前版本做什么
+## 1. 先看这里：怎么用
 
-`AI_Trader_Pro` 是一个运行在 MT5 上的 AI 共识交易 EA。当前版本的实际工作方式是：
+### 1.1 安装
 
-1. EA 首次启动时先校验本地授权；若没有有效授权，则要求输入邮箱和密码联网登录一次。
-2. 登录成功后把授权结果缓存到本地；授权未过期前，后续启动不再重复联网验证。
-3. 在 `InpAnalysisTimeframe` 对应的新 K 线出现时触发分析。
-4. 尝试抓取当前图表截图，并同时生成结构化行情摘要。
-5. 只有在截图成功时才调用 AI；截图失败会直接结束本轮，不允许退化为纯文本分析。
-6. 调用 3 个专家模型分别独立判断。
-7. 只有在模型共识成立且本地风控放行时才下单。
+1. 将 `AI_Trader_Pro.ex5` 放到当前 MT5 终端的 `MQL5\Experts\AI_Trader_Pro\` 目录。
+2. 在 MT5 导航器中刷新 EA 列表。
+3. 把 EA 拖到目标图表。
+4. 打开 MT5 顶部 `Algo Trading`。
+5. 在 `工具 -> 选项 -> EA交易` 中允许算法交易。
 
-当前版本没有第二轮模型复核，也不会在运行期间把信号或交易结果上传到外部后端；审计只落本地文件。
+说明：
 
-## 2. 当前支持的模型方式
+- 公开仓库默认只提供编译文件 `AI_Trader_Pro.ex5` 和文档，不提供 `.mq5` 源文件。
+
+### 1.2 WebRequest 白名单
+
+在 MT5 的 `工具 -> 选项 -> EA交易 -> WebRequest` 中加入：
+
+- `InpLicenseLoginEndpoint` 对应域名，例如 `https://caocaoshuoshuo.com`
+- `InpOpenRouterEndpoint`，默认接口为 `https://openrouter.ai/api/v1/chat/completions`
+
+如果没有加入白名单，授权登录和模型调用都会失败。
+
+### 1.3 首次启动需要填什么
+
+首次使用时至少需要配置：
+
+- `InpLicenseLoginEndpoint`
+- `InpLicenseEmail`
+- `InpLicensePassword`
+- `InpOpenRouterApiKey`
+
+如果 `InpRememberApiKey=true`，EA 会把 API Key 保存到本地，后续重启时可自动读取。
+
+### 1.4 启动后的实际流程
+
+当前版本的启动顺序是：
+
+1. 先等待 MT5 已连接交易服务器且账号登录成功。
+2. 校验本地授权；如果本地没有有效授权，则要求输入邮箱和密码联网登录一次。
+3. 首次满足条件后立即执行一次分析。
+4. 之后只在 `InpAnalysisTimeframe` 出现新 K 线时再次分析。
+
+补充说明：
+
+- `InpTimerSeconds` 只是轮询检查频率，不是实际交易频率。
+- EA 初始化时会自动把当前图表切换到 `InpAnalysisTimeframe`。
+- 若 `TERMINAL_CONNECTED` 状态刷新滞后，但账号、服务器名或服务器时间已经可读，当前版本会视为会话已就绪，不会一直卡在“等待连接”。
+
+### 1.5 一轮分析会发生什么
+
+每一轮的实际行为如下：
+
+1. 抓取当前图表截图。
+2. 生成结构化行情摘要 `market_context`。
+3. 把“截图 + 行情摘要”一起发给 3 个专家模型。
+4. 只有当 3 个模型严格共识，且本地风控通过时，EA 才会下单。
+
+重要限制：
+
+- 当前版本强制要求截图可用，不允许退化成纯文本分析。
+- 如果截图重试后仍失败，本轮会直接结束，不调用 AI。
+- 当前版本没有第二轮模型复核。
+- 当前版本不会把交易或信号自动上传到外部后端，审计仅保存在本地。
+
+### 1.6 最小排查清单
+
+如果 EA 没有分析或没有下单，先检查这几项：
+
+- MT5 是否已连接交易服务器
+- 账号是否已登录
+- `Algo Trading` 是否开启
+- `WebRequest` 白名单是否配置正确
+- 本地授权是否存在且未过期
+- `InpOpenRouterApiKey` 是否可用
+- 当前分析周期是否已经出现新 K 线
+- 图表截图是否成功
+
+## 2. 这个版本具体做什么
+
+`AI_Trader_Pro` 是一个运行在 MT5 上的 AI 共识交易 EA。当前版本的核心特点是：
+
+- 用 3 个独立专家模型做同一轮判断
+- 强制依赖图表截图，不做纯文本降级
+- 只有三模型严格同向且置信度达标时才允许交易
+- 下单前仍要经过本地风控过滤
+- 所有审计和调用记录只保存在本地
+
+## 3. 当前支持的模型方式
 
 默认有 3 个专家槽位：
 
@@ -36,16 +110,6 @@
 
 - 前 3 个专家默认走 `InpOpenRouterEndpoint` + `InpOpenRouterApiKey`。
 - 如果某个专家槽位选择 `CUSTOM`，必须填写对应的 `InpExpertXCustomModel`。
-
-## 3. 触发方式
-
-- EA 初始化后先等待 MT5 已连接交易服务器且账号登录成功。
-- 若 `TERMINAL_CONNECTED` 状态刷新滞后，但账号、服务器名或服务器时间已经可读，当前版本会视为会话已就绪，不再一直卡在“等待连接”。
-- 首次满足条件后会立即执行一次分析。
-- 之后只在 `InpAnalysisTimeframe` 出现新 K 线时执行。
-- `InpTimerSeconds` 只是轮询检查频率，不是实际交易频率。
-
-EA 初始化时会自动把当前图表切换到 `InpAnalysisTimeframe`。例如分析周期设为 `PERIOD_M15`，启动后图表会自动切到 M15。
 
 ## 4. 单轮分析输入
 
@@ -88,26 +152,13 @@ EA 初始化时会自动把当前图表切换到 `InpAnalysisTimeframe`。例如
 字段解读：
 
 - `confidence`
-  表示模型对自己这次 `action` 判断的主观把握程度，范围是 `0.0 ~ 1.0`。
-  例如 `0.72` 可以理解为“模型认为自己大约有 72% 把握”。
+  表示模型对本次 `action` 判断的主观把握程度，范围是 `0.0 ~ 1.0`。
   当前版本里，`confidence` 会直接参与是否允许下单的判断；只有当 `BUY/SELL` 且 `confidence >= InpMinConfidence` 时，才算有效支持票。
 
 - `risk_level`
   表示模型对这次交易方案风险高低的定性标签：
   `LOW` = 相对稳健，`MEDIUM` = 中等风险，`HIGH` = 风险偏高。
   当前版本里，`risk_level` 主要用于解释、审计和日志展示，不会单独触发禁止下单。
-
-怎么一起看：
-
-- `高 confidence + 高 risk_level`
-  表示模型对方向判断很坚定，但同时认为这笔交易本身波动大、失效风险高。
-
-- `低 confidence + 低 risk_level`
-  表示环境不一定很危险，但模型自己也没有足够把握，当前版本同样不会把它计为有效支持票。
-
-- 所以两者不是同一个标准：
-  `confidence` 看的是“模型有多确定”；
-  `risk_level` 看的是“这笔交易有多危险”。
 
 如果模型返回为空、被截断、HTTP 失败、解析失败，都会被视为该模型本轮无效。
 
@@ -251,21 +302,7 @@ EA 初始化时会自动把当前图表切换到 `InpAnalysisTimeframe`。例如
 - 当前方案以本地缓存为准，不会在每次启动时回源校验。
 - 如果需要切换到另一个账号，可删除本地授权缓存文件后重新登录。
 
-## 13. 安装与运行
-
-1. 将 `AI_Trader_Pro.mq5` 或 `AI_Trader_Pro.ex5` 放到当前 MT5 的 `MQL5\Experts\AI_Trader_Pro\` 目录。
-2. 在 MT5 导航器里刷新 EA 列表。
-3. 把 EA 拖到目标图表。
-4. 打开 MT5 顶部 `Algo Trading`。
-5. 在 `工具 -> 选项 -> EA交易` 中允许算法交易。
-6. 在 `WebRequest` 允许列表中加入：
-   - `InpLicenseLoginEndpoint` ：https://caocaoshuoshuo.com
-   - `InpOpenRouterEndpoint` ：https://openrouter.ai/api/v1/chat/completions
-7. 首次使用时填写 `InpLicenseLoginEndpoint`、`InpLicenseEmail`、`InpLicensePassword`。
-8. 填写可用的 `InpOpenRouterApiKey`，或启用本地记忆密钥文件。
-9. 完成首次授权后，后续可以不再重复填写邮箱密码，只要本地授权仍有效即可。
-
-## 14. 常见问题
+## 13. 常见问题
 
 ### Q1: 为什么 EA 不启动分析
 
